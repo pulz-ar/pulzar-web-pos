@@ -86,9 +86,9 @@ export default function InventoryCapturePage() {
   }
 
   return (
-    <main className="h-screen p-0">
-      <div className="w-full h-full grid grid-cols-1 md:grid-cols-2">
-        <div className="h-full flex flex-col px-6 py-6 gap-4">
+    <main className="min-h-screen md:h-screen p-0">
+      <div className="w-full md:h-full grid grid-cols-1 md:grid-cols-2">
+        <div className="md:h-full flex flex-col px-6 py-6 gap-4">
           <div>
             <h1 className="text-2xl font-semibold">Inventory</h1>
           </div>
@@ -146,7 +146,7 @@ export default function InventoryCapturePage() {
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">Eventos</h2>
           </div>
-          <div className="flex-1 min-h-0 overflow-hidden">
+          <div className="flex-1 md:min-h-0 md:overflow-hidden">
             {isLoadingComposed ? (
               <div className="text-sm opacity-70">Cargando eventos...</div>
             ) : events.length === 0 ? (
@@ -163,7 +163,7 @@ export default function InventoryCapturePage() {
           </div>
         </div>
 
-        <div className="h-full px-6 py-6 overflow-y-auto">
+        <div className="md:h-full px-6 py-6 md:overflow-y-auto">
           <EventDetails eventId={selectedEventId} />
         </div>
       </div>
@@ -191,7 +191,7 @@ function EventList({
   itemMap: Map<string, { id: string; name?: string; description?: string; status?: string }>
 }) {
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="md:h-full md:overflow-y-auto">
       <ul className="space-y-3">
         {events.map((e) => {
         const status = typeof e.content === "object" && e.content?.status ? String(e.content.status) : null

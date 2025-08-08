@@ -147,6 +147,19 @@ const _schema = i.schema({
         label: "item",
       },
     },
+    // Relación de imágenes por item: un item puede tener muchas imágenes ($files)
+    itemImages: {
+      forward: {
+        on: "items",
+        has: "many",
+        label: "$files",
+      },
+      reverse: {
+        on: "$files",
+        has: "one",
+        label: "item",
+      },
+    },
     projectsObjective: {
       forward: {
         on: "projects",

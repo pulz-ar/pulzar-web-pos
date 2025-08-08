@@ -113,3 +113,149 @@ export async function submitBarcode(barcode: string): Promise<SubmitResult> {
 }
 
 
+type ActionResult = { ok: true } | { ok: false; error: string }
+
+export async function unlinkItemFromBarcode(params: { barcodeId: string }): Promise<ActionResult> {
+  "use server"
+  try {
+    const { barcodeId } = params
+    if (!barcodeId) return { ok: false, error: "barcodeId requerido" }
+
+    const appId = process.env.NEXT_PUBLIC_INSTANT_APP_ID
+    const adminToken = process.env.INSTANT_APP_ADMIN_TOKEN
+    if (!appId || !adminToken) return { ok: false, error: "Config InstantDB incompleta" }
+
+    const db = init({ appId, adminToken, schema })
+
+    // Obtener item asociado (reverse one link)
+    const qr = await db.query({
+      barcodes: {
+        $: { where: { id: barcodeId }, limit: 1 },
+        item: {},
+      },
+    })
+    const bc: any = (qr as any).barcodes?.[0]
+    const itemId: string | undefined = bc?.item?.id
+
+    if (!itemId) {
+      // Nada que desvincular
+      return { ok: true }
+    }
+
+    await db.transact([
+      // Unlink: remover la relación items<->barcodes
+      db.tx.items[itemId].unlink({ barcodes: barcodeId }),
+    ])
+
+    return { ok: true }
+  } catch (e) {
+    console.error("unlinkItemFromBarcode error", e)
+    return { ok: false, error: "No se pudo desvincular" }
+  }
+}
+
+export async function createItemForBarcode(params: { barcodeId: string }): Promise<
+  | { ok: true; itemId: string }
+  | { ok: false; error: string }
+> {
+  "use server"
+  try {
+    const { barcodeId } = params
+    if (!barcodeId) return { ok: false, error: "barcodeId requerido" }
+
+    const { orgId } = await auth()
+    const appId = process.env.NEXT_PUBLIC_INSTANT_APP_ID
+    const adminToken = process.env.INSTANT_APP_ADMIN_TOKEN
+    if (!appId || !adminToken) return { ok: false, error: "Config InstantDB incompleta" }
+
+    const db = init({ appId, adminToken, schema })
+    const now = new Date().toISOString()
+
+    const itemId = id()
+    await db.transact([
+      db.tx.items[itemId].create({
+        name: "",
+        description: "",
+        price: 0,
+        sku: "",
+        status: "pending",
+        stock: 0,
+        createdAt: now,
+        updatedAt: now,
+      }),
+      db.tx.items[itemId].link({ barcodes: barcodeId }),
+      db.tx.organizations[lookup("clerkOrgId", orgId)].link({ items: itemId }),
+    ])
+
+    return { ok: true, itemId }
+  } catch (e) {
+    console.error("createItemForBarcode error", e)
+    return { ok: false, error: "No se pudo crear el item" }
+  }
+}
+
+export async function updateItemFields(params: {
+  itemId: string
+  updates: Partial<{ name: string; description: string; price: number; sku: string; status: string; stock: number }>
+}): Promise<ActionResult> {
+  "use server"
+  try {
+    const { itemId, updates } = params
+    if (!itemId) return { ok: false, error: "itemId requerido" }
+
+    const appId = process.env.NEXT_PUBLIC_INSTANT_APP_ID
+    const adminToken = process.env.INSTANT_APP_ADMIN_TOKEN
+    if (!appId || !adminToken) return { ok: false, error: "Config InstantDB incompleta" }
+    const db = init({ appId, adminToken, schema })
+
+    const payload: any = { ...updates, updatedAt: new Date().toISOString() }
+    await db.transact([db.tx.items[itemId].update(payload)])
+    return { ok: true }
+  } catch (e) {
+    console.error("updateItemFields error", e)
+    return { ok: false, error: "No se pudo actualizar el item" }
+  }
+}
+
+export async function uploadItemImages(params: {
+  itemId: string
+  files: Array<{ path: string; base64: string; contentType?: string; contentDisposition?: string }>
+}): Promise<ActionResult> {
+  "use server"
+  try {
+    const { itemId, files } = params
+    if (!itemId || !files?.length) return { ok: false, error: "Parámetros inválidos" }
+
+    const appId = process.env.NEXT_PUBLIC_INSTANT_APP_ID as string
+    const adminToken = process.env.INSTANT_APP_ADMIN_TOKEN as string
+    if (!appId || !adminToken) return { ok: false, error: "Config InstantDB incompleta" }
+    const db = init({ appId, adminToken, schema })
+
+    // Subir y vincular cada archivo al item via reverse link ($files -> item)
+    for (const f of files) {
+      const { path, base64, contentType, contentDisposition } = f
+      // base64 seguro desde el cliente (sin data: prefix)
+      const buffer = Buffer.from(base64, "base64")
+      await db.storage.upload(path, buffer, {
+        contentType: contentType || "application/octet-stream",
+        contentDisposition: contentDisposition || "inline",
+      })
+    }
+
+    // Obtener los $files subidos por path y linkearlos
+    const { data } = await db.query({
+      $files: { $: { where: { path: { $in: files.map((x) => x.path) } } } },
+    } as any)
+
+    const txs = (data?.$files ?? []).map((file: any) => db.tx.$files[file.id].link({ item: itemId }))
+    if (txs.length) {
+      await db.transact(txs)
+    }
+    return { ok: true }
+  } catch (e) {
+    console.error("uploadItemImages error", e)
+    return { ok: false, error: "No se pudieron subir las imágenes" }
+  }
+}
+
+
