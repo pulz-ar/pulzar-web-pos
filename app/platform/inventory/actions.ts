@@ -15,7 +15,7 @@ export async function submitBarcode(barcode: string): Promise<SubmitResult> {
       return { ok: false, error: "Código de barras inválido" }
     }
 
-    const { userId, orgId } = await auth()
+    const { userId, orgId, sessionClaims } = await auth()
 
     function normalizeScannedInput(input: string): string {
       return input
@@ -36,10 +36,13 @@ export async function submitBarcode(barcode: string): Promise<SubmitResult> {
     }
 
     const db = init({ appId, adminToken, schema })
+    // Impersonar al usuario por email (respeta permisos)
+    let email: string | undefined = (sessionClaims as any)?.email as string | undefined
+    const scopedDb = db.asUser(email ? { email } : { guest: true })
 
     const eventId = id()
-    await db.transact([
-      db.tx.events[eventId].create({
+    await scopedDb.transact([
+      scopedDb.tx.events[eventId].create({
         type: "scanner.read",
         content: {
           status: "created",
@@ -48,7 +51,7 @@ export async function submitBarcode(barcode: string): Promise<SubmitResult> {
         },
         createdAt: new Date().toISOString(),
       }),
-      db.tx.organizations[lookup("clerkOrgId", orgId)].link({
+      scopedDb.tx.organizations[lookup("clerkOrgId", orgId)].link({
         events: eventId,
       }),
     ])
@@ -58,10 +61,10 @@ export async function submitBarcode(barcode: string): Promise<SubmitResult> {
       try {
         // helper para mergear content sin perder campos
         async function mergeContent(patch: (current: any) => any) {
-          const res = await db.query({ events: { $: { where: { id: eventId }, limit: 1 } } })
+          const res = await scopedDb.query({ events: { $: { where: { id: eventId }, limit: 1 } } })
           const current = res.events?.[0]?.content ?? {}
           const nextContent = patch(current)
-          await db.transact([db.tx.events[eventId].update({ content: nextContent })])
+          await scopedDb.transact([scopedDb.tx.events[eventId].update({ content: nextContent })])
         }
 
         // 1) status -> processing
@@ -97,9 +100,9 @@ export async function submitBarcode(barcode: string): Promise<SubmitResult> {
       } catch (e) {
         console.error("workflow error", e)
         try {
-          const res = await db.query({ events: { $: { where: { id: eventId }, limit: 1 } } })
+          const res = await scopedDb.query({ events: { $: { where: { id: eventId }, limit: 1 } } })
           const current: any = res.events?.[0]?.content ?? {}
-          await db.transact([db.tx.events[eventId].update({ content: { ...current, status: "error" } })])
+          await scopedDb.transact([scopedDb.tx.events[eventId].update({ content: { ...current, status: "error" } })])
         } catch {}
       }
     }))
@@ -121,14 +124,17 @@ export async function unlinkItemFromBarcode(params: { barcodeId: string }): Prom
     const { barcodeId } = params
     if (!barcodeId) return { ok: false, error: "barcodeId requerido" }
 
+    const { sessionClaims } = await auth()
     const appId = process.env.NEXT_PUBLIC_INSTANT_APP_ID
     const adminToken = process.env.INSTANT_APP_ADMIN_TOKEN
     if (!appId || !adminToken) return { ok: false, error: "Config InstantDB incompleta" }
 
     const db = init({ appId, adminToken, schema })
+    const email = (sessionClaims as any)?.email as string
+    const scopedDb = db.asUser({ email })
 
     // Obtener item asociado (reverse one link)
-    const qr = await db.query({
+    const qr = await scopedDb.query({
       barcodes: {
         $: { where: { id: barcodeId }, limit: 1 },
         item: {},
@@ -142,9 +148,9 @@ export async function unlinkItemFromBarcode(params: { barcodeId: string }): Prom
       return { ok: true }
     }
 
-    await db.transact([
+    await scopedDb.transact([
       // Unlink: remover la relación items<->barcodes
-      db.tx.items[itemId].unlink({ barcodes: barcodeId }),
+      scopedDb.tx.items[itemId].unlink({ barcodes: barcodeId }),
     ])
 
     return { ok: true }
@@ -163,17 +169,19 @@ export async function createItemForBarcode(params: { barcodeId: string }): Promi
     const { barcodeId } = params
     if (!barcodeId) return { ok: false, error: "barcodeId requerido" }
 
-    const { orgId } = await auth()
+    const { orgId, sessionClaims } = await auth()
     const appId = process.env.NEXT_PUBLIC_INSTANT_APP_ID
     const adminToken = process.env.INSTANT_APP_ADMIN_TOKEN
     if (!appId || !adminToken) return { ok: false, error: "Config InstantDB incompleta" }
 
     const db = init({ appId, adminToken, schema })
+    const email = (sessionClaims as any)?.email as string
+    const scopedDb = db.asUser({ email })
     const now = new Date().toISOString()
 
     const itemId = id()
-    await db.transact([
-      db.tx.items[itemId].create({
+    await scopedDb.transact([
+      scopedDb.tx.items[itemId].create({
         name: "",
         description: "",
         price: 0,
@@ -183,8 +191,8 @@ export async function createItemForBarcode(params: { barcodeId: string }): Promi
         createdAt: now,
         updatedAt: now,
       }),
-      db.tx.items[itemId].link({ barcodes: barcodeId }),
-      db.tx.organizations[lookup("clerkOrgId", orgId)].link({ items: itemId }),
+      scopedDb.tx.items[itemId].link({ barcodes: barcodeId }),
+      scopedDb.tx.organizations[lookup("clerkOrgId", orgId)].link({ items: itemId }),
     ])
 
     return { ok: true, itemId }
@@ -203,13 +211,16 @@ export async function updateItemFields(params: {
     const { itemId, updates } = params
     if (!itemId) return { ok: false, error: "itemId requerido" }
 
+    const { sessionClaims } = await auth()
     const appId = process.env.NEXT_PUBLIC_INSTANT_APP_ID
     const adminToken = process.env.INSTANT_APP_ADMIN_TOKEN
     if (!appId || !adminToken) return { ok: false, error: "Config InstantDB incompleta" }
     const db = init({ appId, adminToken, schema })
+    const email = (sessionClaims as any)?.email as string
+    const scopedDb = db.asUser({ email })
 
     const payload: any = { ...updates, updatedAt: new Date().toISOString() }
-    await db.transact([db.tx.items[itemId].update(payload)])
+    await scopedDb.transact([scopedDb.tx.items[itemId].update(payload)])
     return { ok: true }
   } catch (e) {
     console.error("updateItemFields error", e)
@@ -226,10 +237,13 @@ export async function uploadItemImages(params: {
     const { itemId, files } = params
     if (!itemId || !files?.length) return { ok: false, error: "Parámetros inválidos" }
 
+    const { sessionClaims } = await auth()
     const appId = process.env.NEXT_PUBLIC_INSTANT_APP_ID as string
     const adminToken = process.env.INSTANT_APP_ADMIN_TOKEN as string
     if (!appId || !adminToken) return { ok: false, error: "Config InstantDB incompleta" }
     const db = init({ appId, adminToken, schema })
+    const email = (sessionClaims as any)?.email as string
+    const scopedDb = db.asUser({ email })
 
     // Subir y vincular cada archivo al item via reverse link ($files -> item)
     for (const f of files) {
@@ -243,13 +257,13 @@ export async function uploadItemImages(params: {
     }
 
     // Obtener los $files subidos por path y linkearlos
-    const qr = await db.query({
+    const qr = await scopedDb.query({
       $files: { $: { where: { path: { $in: files.map((x) => x.path) } } } },
     })
 
-    const txs = qr.$files.map((file: any) => db.tx.$files[file.id].link({ item: itemId }))
+    const txs = qr.$files.map((file: any) => scopedDb.tx.$files[file.id].link({ item: itemId }))
     if (txs.length) {
-      await db.transact(txs)
+      await scopedDb.transact(txs)
     }
     return { ok: true }
   } catch (e) {
