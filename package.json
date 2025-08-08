@@ -1,0 +1,35 @@
+{
+  "name": "pulzar-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@clerk/nextjs": "^6.29.0",
+    "@instantdb/admin": "^0.20.21",
+    "@instantdb/core": "^0.20.21",
+    "@instantdb/react": "^0.20.21",
+    "@mastra/core": "^0.13.1",
+    "@mastra/inngest": "^0.11.9",
+    "@mastra/loggers": "^0.10.6",
+    "ai": "^5.0.8",
+    "exa-js": "^1.8.27",
+    "inngest": "^3.40.1",
+    "next": "15.4.6",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "zod": "^4.0.15"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
