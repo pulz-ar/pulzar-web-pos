@@ -52,10 +52,8 @@ export default function EventScannerRead({ eventId }: EventScannerReadProps) {
       }
     : null
 
-  const { isLoading: isLoadingItem, data: itemData } = db.useQuery(itemQuery as any)
-  const item = (itemData?.items?.[0] ?? null) as
-    | { id: string; name?: string; description?: string }
-    | null
+  const { isLoading: isLoadingItem, data: itemData } = db.useQuery(itemQuery)
+  const item = itemData?.items?.[0]
 
   const interpretation = useMemo(() => {
     const str = typeof raw === "string" ? raw.trim() : ""
