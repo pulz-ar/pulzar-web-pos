@@ -1,7 +1,7 @@
 "use client"
 
 import { init } from "@instantdb/react"
-import { useMemo, useRef, useState, useTransition } from "react"
+import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { createItemForBarcode, unlinkItemFromBarcode, updateItemFields, uploadItemImages } from "./actions"
 
 const db = init({ appId: process.env.NEXT_PUBLIC_INSTANT_APP_ID! })
@@ -117,7 +117,7 @@ export default function EventScannerRead({ eventId }: EventScannerReadProps) {
           {isLoadingItem ? (
             <div className="text-xs opacity-70">Cargando item...</div>
           ) : item ? (
-            <ItemEditor item={item} files={files} barcodeId={resolved.barcodeId} />
+            <ItemEditor key={(item as any)?.updatedAt ?? item.id} item={item} files={files} barcodeId={resolved.barcodeId} />
           ) : (
             <div className="text-xs opacity-70">Item no encontrado</div>
           )}
@@ -189,6 +189,17 @@ function ItemEditor({ item, files, barcodeId }: { item: any; files: any; barcode
     stock: typeof item?.stock === "number" ? item.stock : 0,
     status: item?.status ?? "pending",
   })
+  // Sincronizar cuando llega/ cambia el item (evita quedarse con valores vacíos si el item carga después)
+  useEffect(() => {
+    setForm({
+      name: item?.name ?? "",
+      description: item?.description ?? "",
+      sku: item?.sku ?? "",
+      price: typeof item?.price === "number" ? item.price : 0,
+      stock: typeof item?.stock === "number" ? item.stock : 0,
+      status: item?.status ?? "pending",
+    })
+  }, [item?.id, item?.updatedAt])
   const [isSaving, startTransition] = useTransition()
   const inputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)

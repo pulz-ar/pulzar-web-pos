@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
+import { useEffect, useMemo, useState, useTransition } from "react"
 import { init } from "@instantdb/react"
 import { submitBarcode } from "./actions"
 import EventScannerRead from "./event-scanner-read"
@@ -12,6 +12,7 @@ export default function InventoryCapturePage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
+  const [autoFocusNew, setAutoFocusNew] = useState(false)
   // Base query: solo eventos
   const baseQuery = {
     events: {
@@ -81,9 +82,25 @@ export default function InventoryCapturePage() {
         setErrorMessage(result.error)
       } else {
         setBarcode("")
+        // Usar el eventId devuelto para enfocar inmediatamente
+        if (result.eventId) {
+          setSelectedEventId(result.eventId)
+          setAutoFocusNew(false)
+        } else {
+          // Fallback si por alguna razón no llega el id
+          setAutoFocusNew(true)
+        }
       }
     })
   }
+
+  // Cuando se crea un nuevo evento (al tope), enfocar su detalle una vez
+  useEffect(() => {
+    if (autoFocusNew && firstEventId) {
+      setSelectedEventId(firstEventId)
+      setAutoFocusNew(false)
+    }
+  }, [autoFocusNew, firstEventId])
 
   return (
     <main className="min-h-screen md:h-screen p-0">
@@ -143,6 +160,10 @@ export default function InventoryCapturePage() {
           {errorMessage && (
             <div className="mt-3 text-sm text-red-600 dark:text-red-400">{errorMessage}</div>
           )}
+          {/* Detalle en mobile: se muestra aquí entre input y eventos */}
+          <div className="md:hidden">
+            <EventDetails eventId={selectedEventId} />
+          </div>
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">Eventos</h2>
           </div>
@@ -163,7 +184,7 @@ export default function InventoryCapturePage() {
           </div>
         </div>
 
-        <div className="md:h-full px-6 py-6 md:overflow-y-auto">
+        <div className="hidden md:block md:h-full px-6 py-6 md:overflow-y-auto">
           <EventDetails eventId={selectedEventId} />
         </div>
       </div>

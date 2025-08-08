@@ -7,7 +7,7 @@ import { runBarcodeAnalysis } from "./barcode-analysis"
 import { runUrlAnalysis } from "./url-analysis"
 import { after } from "next/server"
 
-type SubmitResult = { ok: true } | { ok: false; error: string }
+type SubmitResult = { ok: true; eventId: string } | { ok: false; error: string }
 
 export async function submitBarcode(barcode: string): Promise<SubmitResult> {
   try {
@@ -16,11 +16,10 @@ export async function submitBarcode(barcode: string): Promise<SubmitResult> {
     }
 
     const { userId, orgId, sessionClaims } = await auth()
-
+    const eventId = id()
     function normalizeScannedInput(input: string): string {
       return input
         .trim()
-        // Corrige patrón común de QR escaneado en ciertos teclados: "Ñ--" → "://"
         .replace(/Ñ--/g, "://")
         .replace(/Ñ-/g, ":/")
         .replace(/Ñ/g, ":")
@@ -36,11 +35,10 @@ export async function submitBarcode(barcode: string): Promise<SubmitResult> {
     }
 
     const db = init({ appId, adminToken, schema })
-    // Impersonar al usuario por email (respeta permisos)
-    let email: string | undefined = (sessionClaims as any)?.email as string | undefined
-    const scopedDb = db.asUser(email ? { email } : { guest: true })
+    const email: string = (sessionClaims as any)?.email as string
+    const scopedDb = db.asUser({ email })
 
-    const eventId = id()
+    // 1) Crear evento sincronamente para que el hook lo vea
     await scopedDb.transact([
       scopedDb.tx.events[eventId].create({
         type: "scanner.read",
@@ -51,12 +49,10 @@ export async function submitBarcode(barcode: string): Promise<SubmitResult> {
         },
         createdAt: new Date().toISOString(),
       }),
-      scopedDb.tx.organizations[lookup("clerkOrgId", orgId)].link({
-        events: eventId,
-      }),
+      scopedDb.tx.organizations[lookup("clerkOrgId", orgId)].link({ events: eventId }),
     ])
 
-    // Async workflow (no bloquear la respuesta):
+    // 2) Workflow async: procesamiento, análisis y enriquecimiento
     after((async () => {
       try {
         // helper para mergear content sin perder campos
@@ -103,11 +99,11 @@ export async function submitBarcode(barcode: string): Promise<SubmitResult> {
           const res = await scopedDb.query({ events: { $: { where: { id: eventId }, limit: 1 } } })
           const current: any = res.events?.[0]?.content ?? {}
           await scopedDb.transact([scopedDb.tx.events[eventId].update({ content: { ...current, status: "error" } })])
-        } catch {}
+        } catch { }
       }
     }))
 
-    return { ok: true }
+    return { ok: true, eventId }
   } catch (error) {
     console.error("Error en submitBarcode:", error)
     const message = error instanceof Error ? error.message : "Error desconocido"
