@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState, useTransition } from "react"
+import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { init } from "@instantdb/react"
 import { submitBarcode } from "./actions"
 import EventScannerRead from "./event-scanner-read"
@@ -13,6 +13,8 @@ export default function InventoryCapturePage() {
   const [isPending, startTransition] = useTransition()
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
   const [autoFocusNew, setAutoFocusNew] = useState(false)
+  const scannerInputRef = useRef<HTMLInputElement>(null)
+  const [pendingQueue, setPendingQueue] = useState<Array<{ id: string; value: string }>>([])
   // Base query: solo eventos
   const baseQuery = {
     events: {
@@ -76,12 +78,21 @@ export default function InventoryCapturePage() {
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
     setErrorMessage(null)
+    // Limpiar inmediatamente para carga rápida, conservar valor a enviar
+    const valueToSubmit = barcode
+    setBarcode("")
+    // Mantener foco en el input para seguir escaneando
+    scannerInputRef.current?.focus()
+    // Agregar a cola local de pendientes inmediatamente
+    const localId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    setPendingQueue((q) => [...q, { id: localId, value: valueToSubmit }])
     startTransition(async () => {
-      const result = await submitBarcode(barcode)
+      const result = await submitBarcode(valueToSubmit)
+      // Remover de cola local sin importar el resultado
+      setPendingQueue((q) => q.filter((p) => p.id !== localId))
       if (!result.ok) {
         setErrorMessage(result.error)
       } else {
-        setBarcode("")
         // Usar el eventId devuelto para enfocar inmediatamente
         if (result.eventId) {
           setSelectedEventId(result.eventId)
@@ -102,6 +113,58 @@ export default function InventoryCapturePage() {
     }
   }, [autoFocusNew, firstEventId])
 
+  // Captura global de teclado: si no hay foco en inputs, enrutar a la entrada de scanner
+  useEffect(() => {
+    function isEditableElement(el: Element | null): boolean {
+      if (!el) return false
+      const tag = (el as HTMLElement).tagName
+      const editable = (el as HTMLElement).isContentEditable
+      return (
+        editable ||
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT"
+      )
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      const active = document.activeElement
+      if (isEditableElement(active)) return
+      // Ignorar combinaciones con Ctrl/Cmd/Alt
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      // Enrutar teclas imprimibles, Backspace y Enter
+      if (e.key.length === 1) {
+        setBarcode((prev) => prev + e.key)
+        scannerInputRef.current?.focus()
+        e.preventDefault()
+        return
+      }
+      if (e.key === "Backspace") {
+        setBarcode((prev) => prev.slice(0, -1))
+        scannerInputRef.current?.focus()
+        e.preventDefault()
+        return
+      }
+      if (e.key === "Enter") {
+        // Evitar submit vacío
+        if (!barcode || barcode.trim() === "") {
+          e.preventDefault()
+          return
+        }
+        // disparar submit del form del input
+        const form = scannerInputRef.current?.form as HTMLFormElement | undefined
+        if (form && typeof form.requestSubmit === "function") {
+          form.requestSubmit()
+        } else if (form) {
+          form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }))
+        }
+        e.preventDefault()
+        return
+      }
+    }
+    window.addEventListener("keydown", onKeyDown, true)
+    return () => window.removeEventListener("keydown", onKeyDown, true)
+  }, [])
+
   return (
     <main className="min-h-screen md:h-screen p-0">
       <div className="w-full md:h-full grid grid-cols-1 md:grid-cols-2">
@@ -113,6 +176,7 @@ export default function InventoryCapturePage() {
             <div className="space-y-1">
               <label className="text-sm">Entrada de scanner</label>
               <input
+                ref={scannerInputRef}
                 type="text"
                 inputMode="text"
                 enterKeyHint="done"
@@ -129,32 +193,9 @@ export default function InventoryCapturePage() {
             </div>
             <button
               type="submit"
-              className="w-full px-4 py-2 bg-black text-white dark:bg-white dark:text-black disabled:opacity-50 flex items-center justify-center gap-2"
-              disabled={isPending}
+              className="w-full px-4 py-2 bg-black text-white dark:bg-white dark:text-black flex items-center justify-center gap-2"
             >
-              {isPending && (
-                <svg
-                  className="h-4 w-4 animate-spin"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                  ></path>
-                </svg>
-              )}
-              {isPending ? "Guardando..." : "Guardar"}
+              Guardar
             </button>
           </form>
           {errorMessage && (
@@ -166,6 +207,12 @@ export default function InventoryCapturePage() {
           </div>
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">Eventos</h2>
+            {pendingQueue.length > 0 && (
+              <div className="text-xs opacity-80 flex items-center gap-2">
+                <span className="inline-block h-3 w-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>Pendientes: {pendingQueue.length}</span>
+              </div>
+            )}
           </div>
           <div className="flex-1 md:min-h-0 md:overflow-hidden">
             {isLoadingComposed ? (
