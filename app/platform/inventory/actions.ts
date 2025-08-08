@@ -52,6 +52,34 @@ export async function submitBarcode(barcode: string): Promise<SubmitResult> {
       scopedDb.tx.organizations[lookup("clerkOrgId", orgId)].link({ events: eventId }),
     ])
 
+    // Fast-path: si ya existe el barcode en esta organización, asociar item inmediatamente
+    try {
+      const isNumeric = /^\d{8,}$/.test(normalized)
+      if (isNumeric) {
+        const qr = await scopedDb.query({
+          barcodes: {
+            $: { where: { code: normalized }, limit: 1 },
+            item: { $: { fields: ["id"] } },
+          },
+        } as any)
+        const bc: any = (qr as any)?.barcodes?.[0]
+        if (bc?.id) {
+          // Merge content para no perder campos
+          const evRes = await scopedDb.query({ events: { $: { where: { id: eventId }, limit: 1 } } })
+          const current = (evRes as any)?.events?.[0]?.content ?? {}
+          const nextContent = {
+            ...current,
+            analysis: {
+              ...(current.analysis ?? {}),
+              barcode: { value: normalized, scheme: "NUMERIC", valid: true },
+              resolved: { barcodeId: bc.id, itemId: bc.item?.id },
+            },
+          }
+          await scopedDb.transact([scopedDb.tx.events[eventId].update({ content: nextContent })])
+        }
+      }
+    } catch {}
+
     // 2) Workflow async: procesamiento, análisis y enriquecimiento
     after((async () => {
       try {
