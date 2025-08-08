@@ -56,7 +56,7 @@ export default function EventScannerRead({ eventId }: EventScannerReadProps) {
 
   const { isLoading: isLoadingItem, data: itemData } = db.useQuery(itemQuery)
   const item = itemData?.items?.[0]
-  const files: Array<{ id: string; path: string; url: string }> = item?.$files ?? []
+  const files = item?.$files ?? []
 
   const interpretation = useMemo(() => {
     const str = typeof raw === "string" ? raw.trim() : ""
@@ -111,18 +111,7 @@ export default function EventScannerRead({ eventId }: EventScannerReadProps) {
                       {item.status}
                     </span>
                   )}
-                  {resolved?.barcodeId && (
-                    <button
-                      type="button"
-                      title="Desvincular item"
-                      className="inline-flex items-center justify-center h-6 w-6 border border-white/40 hover:border-white/70 text-sm"
-                      onClick={async () => {
-                        await unlinkItemFromBarcode({ barcodeId: resolved.barcodeId! })
-                      }}
-                    >
-                      ×
-                    </button>
-                  )}
+                  {resolved?.barcodeId && <ConfirmUnlinkButton barcodeId={resolved.barcodeId} />}
                 </div>
               </div>
           {isLoadingItem ? (
@@ -168,18 +157,7 @@ function StandardBarcodeInfo({ barcodeId }: { barcodeId: string }) {
     <div className="text-xs opacity-80 flex items-center gap-2">
       <span className="font-mono">{bc.code}</span>
       {bc.scheme && <span className="opacity-60">({bc.scheme})</span>}
-      {bc.item?.id && (
-        <button
-          type="button"
-          title="Desvincular item"
-          className="ml-2 inline-flex items-center justify-center h-5 w-5 border border-white/40 hover:border-white/70 text-xs"
-          onClick={async () => {
-            await unlinkItemFromBarcode({ barcodeId })
-          }}
-        >
-          ×
-        </button>
-      )}
+      {/* Botón X se muestra en la cabecera del Item */}
     </div>
   )
 }
@@ -202,7 +180,7 @@ function CreateItemForBarcodeButton({ barcodeId }: { barcodeId: string }) {
   )
 }
 
-function ItemEditor({ item, files, barcodeId }: { item: any; files: Array<{ id: string; path: string; url: string }>; barcodeId?: string }) {
+function ItemEditor({ item, files, barcodeId }: { item: any; files: any; barcodeId?: string }) {
   const [form, setForm] = useState({
     name: item?.name ?? "",
     description: item?.description ?? "",
@@ -333,6 +311,56 @@ function ImageCarousel({ files }: { files: Array<{ id: string; path: string; url
         </>
       )}
     </div>
+  )
+}
+
+function ConfirmUnlinkButton({ barcodeId }: { barcodeId: string }) {
+  const [open, setOpen] = useState(false)
+  const [isPending, startTransition] = useTransition()
+  return (
+    <>
+      <button
+        type="button"
+        title="Desvincular item"
+        className="inline-flex items-center justify-center h-6 w-6 border border-white/40 hover:border-white/70 text-sm"
+        onClick={() => setOpen(true)}
+      >
+        ×
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => !isPending && setOpen(false)} />
+          <div className="relative z-10 w-[92%] max-w-sm bg-neutral-900 text-white border border-white/20 p-4">
+            <div className="text-sm font-medium mb-2">Desvincular item</div>
+            <div className="text-xs opacity-80 mb-4">¿Seguro que querés eliminar la relación entre este item y el código de barras?</div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                className="px-2 py-1 border border-white/30 text-xs"
+                disabled={isPending}
+                onClick={() => setOpen(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="px-2 py-1 border border-white/60 text-xs flex items-center gap-2"
+                disabled={isPending}
+                onClick={() => {
+                  startTransition(async () => {
+                    await unlinkItemFromBarcode({ barcodeId })
+                    setOpen(false)
+                  })
+                }}
+              >
+                {isPending && <span className="inline-block h-3 w-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 

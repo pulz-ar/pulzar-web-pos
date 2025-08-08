@@ -243,11 +243,11 @@ export async function uploadItemImages(params: {
     }
 
     // Obtener los $files subidos por path y linkearlos
-    const { data } = await db.query({
+    const qr = await db.query({
       $files: { $: { where: { path: { $in: files.map((x) => x.path) } } } },
-    } as any)
+    })
 
-    const txs = (data?.$files ?? []).map((file: any) => db.tx.$files[file.id].link({ item: itemId }))
+    const txs = qr.$files.map((file: any) => db.tx.$files[file.id].link({ item: itemId }))
     if (txs.length) {
       await db.transact(txs)
     }
