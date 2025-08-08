@@ -48,6 +48,17 @@ export default function InventoryCapturePage() {
     return { barcodeIds: Array.from(new Set(b)), itemIds: Array.from(new Set(it)) }
   }, [events])
 
+  // Combinar pendientes locales como eventos "virtuales" al inicio de la lista
+  const displayEvents = useMemo(() => {
+    const pendingAsEvents = pendingQueue.map((p) => ({
+      id: `pending-${p.id}`,
+      type: "scanner.read",
+      content: { status: "pending", payload: { raw: p.value } },
+      serverCreatedAt: Date.now(),
+    }))
+    return [...pendingAsEvents, ...events]
+  }, [pendingQueue, events])
+
   // Query compuesta: eventos + (barcodes/items) según ids detectados
   const composedQuery: any = useMemo(() => {
     const q: any = baseQuery
@@ -221,8 +232,7 @@ export default function InventoryCapturePage() {
               <div className="text-sm opacity-70">Sin registros</div>
             ) : (
               <EventList
-                key={firstEventId ?? "no-first"}
-                events={events}
+                events={displayEvents as any}
                 onSelect={(e) => setSelectedEventId(e.id)}
                 barcodeMap={barcodeMap}
                 itemMap={itemMap}
