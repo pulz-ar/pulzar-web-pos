@@ -9,9 +9,11 @@ export async function runUrlAnalysis(params: {
   eventId: string
   raw: string
   orgId?: string
+  userEmail: string
 }) {
-  const { appId, adminToken, eventId, raw } = params
+  const { appId, adminToken, eventId, raw, userEmail } = params
   const db = init({ appId, adminToken, schema })
+  const scopedDb = db.asUser({ email: userEmail })
 
   function normalizeUrl(url: string): string {
     try {
@@ -24,11 +26,11 @@ export async function runUrlAnalysis(params: {
   }
 
   async function mergeContent(patch: (current: any) => any) {
-    const res = await db.query({ events: { $: { where: { id: eventId }, limit: 1 } } })
+    const res = await scopedDb.query({ events: { $: { where: { id: eventId }, limit: 1 } } })
     const existing: any = res.events?.[0]
     const currentContent = existing?.content ?? {}
     const nextContent = patch(currentContent)
-    await db.transact([db.tx.events[eventId].update({ content: nextContent })])
+    await scopedDb.transact([scopedDb.tx.events[eventId].update({ content: nextContent })])
   }
 
   try {

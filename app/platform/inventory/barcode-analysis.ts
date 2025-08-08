@@ -12,9 +12,11 @@ export async function runBarcodeAnalysis(params: {
   eventId: string
   raw: string
   orgId?: string
+  userEmail: string
 }) {
-  const { appId, adminToken, eventId, raw, orgId } = params
+  const { appId, adminToken, eventId, raw, orgId, userEmail } = params
   const db = init({ appId, adminToken, schema })
+  const scopedDb = db.asUser({ email: userEmail })
 
   // Heurísticas de validación: EAN-13 / EAN-8 (checksum), fallback numérico
   function isDigits(str: string): boolean {
@@ -185,11 +187,11 @@ export async function runBarcodeAnalysis(params: {
   }
 
   async function mergeContent(patch: (current: any) => any) {
-    const res = await db.query({ events: { $: { where: { id: eventId }, limit: 1 } } })
+    const res = await scopedDb.query({ events: { $: { where: { id: eventId }, limit: 1 } } })
     const existing: any = (res as any).events?.[0]
     const currentContent = existing?.content ?? {}
     const nextContent = patch(currentContent)
-    await db.transact([db.tx.events[eventId].update({ content: nextContent })])
+    await scopedDb.transact([scopedDb.tx.events[eventId].update({ content: nextContent })])
   }
   try {
     const info = classifyBarcode(raw)
@@ -208,7 +210,7 @@ export async function runBarcodeAnalysis(params: {
     // Ensure barcode entity and link with an item
     const now = new Date().toISOString()
     // 1) buscar si existe barcode
-    const qr = await db.query({
+    const qr = await scopedDb.query({
       barcodes: {
         $: { where: { code: raw }, limit: 1 },
         item: {},
@@ -220,9 +222,9 @@ export async function runBarcodeAnalysis(params: {
     if (!barcodeId) {
       barcodeId = crypto.randomUUID()
       const info = classifyBarcode(raw)
-      await db.transact([
-        db.tx.barcodes[barcodeId].create({ code: raw, scheme: info.scheme, createdAt: now }),
-        db.tx.organizations[lookup("clerkOrgId", orgId)].link({
+      await scopedDb.transact([
+        scopedDb.tx.barcodes[barcodeId].create({ code: raw, scheme: info.scheme, createdAt: now }),
+        scopedDb.tx.organizations[lookup("clerkOrgId", orgId)].link({
           barcodes: barcodeId,
         }),
       ])
@@ -233,8 +235,8 @@ export async function runBarcodeAnalysis(params: {
     if (!itemId) {
       // crear item vacío
       itemId = crypto.randomUUID()
-      await db.transact([
-        db.tx.items[itemId].create({
+      await scopedDb.transact([
+        scopedDb.tx.items[itemId].create({
           name: "",
           description: "",
           price: 0,
@@ -244,10 +246,10 @@ export async function runBarcodeAnalysis(params: {
           createdAt: now,
           updatedAt: now,
         }),
-        db.tx.items[itemId].link({
+        scopedDb.tx.items[itemId].link({
           barcodes: barcodeId,
         }),
-        db.tx.organizations[lookup("clerkOrgId", orgId)].link({
+        scopedDb.tx.organizations[lookup("clerkOrgId", orgId)].link({
           items: itemId,
         }),
       ])
@@ -390,7 +392,7 @@ Si una clave no aplica o no se conoce, usa null. No incluyas texto adicional.`
     // Actualizar el item con la info obtenida (solo completa campos vacíos)
     try {
       if (itemId && external?.mapped) {
-        const ir = await db.query({ items: { $: { where: { id: itemId }, limit: 1 } } })
+        const ir = await scopedDb.query({ items: { $: { where: { id: itemId }, limit: 1 } } })
         const currentItem: any = (ir as any).items?.[0]
         if (currentItem) {
           const itemUpdate: any = {}
@@ -412,7 +414,7 @@ Si una clave no aplica o no se conoce, usa null. No incluyas texto adicional.`
 
           if (Object.keys(itemUpdate).length > 0) {
             itemUpdate.updatedAt = new Date().toISOString()
-            await db.transact([db.tx.items[itemId].update(itemUpdate)])
+            await scopedDb.transact([scopedDb.tx.items[itemId].update(itemUpdate)])
           }
         }
       }

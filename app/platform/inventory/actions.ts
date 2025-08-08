@@ -90,9 +90,9 @@ export async function submitBarcode(barcode: string): Promise<SubmitResult> {
 
         // 3) Branch por tipo
         if (detected === "barcode") {
-          await runBarcodeAnalysis({ appId, adminToken, eventId, raw, orgId: orgId ?? undefined })
+          await runBarcodeAnalysis({ appId, adminToken, eventId, raw, orgId: orgId ?? undefined, userEmail: (sessionClaims as any)?.email as string })
         } else if (detected === "url") {
-          await runUrlAnalysis({ appId, adminToken, eventId, raw, orgId: orgId ?? undefined })
+          await runUrlAnalysis({ appId, adminToken, eventId, raw, orgId: orgId ?? undefined, userEmail: (sessionClaims as any)?.email as string })
         }
 
         // finalizar (opcional):
