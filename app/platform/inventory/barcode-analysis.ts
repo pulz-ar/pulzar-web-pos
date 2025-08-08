@@ -2,7 +2,7 @@
 
 import { init, lookup } from "@instantdb/admin"
 import schema from "@inventory/instant.schema"
-import { generateObject } from "ai"
+import { generateObject, streamText } from "ai"
 import Exa from "exa-js"
 import { z } from "zod"
 
