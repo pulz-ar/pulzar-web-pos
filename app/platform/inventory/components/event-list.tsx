@@ -1,6 +1,7 @@
 "use client"
 
 import React, { memo } from "react"
+import ItemBrief from "./item-brief"
 
 export type EventRecord = {
   id: string
@@ -13,12 +14,12 @@ export type EventRecord = {
 function EventListComponent({
   events,
   onSelect,
-  barcodeMap,
+  identifierMap,
   itemMap,
 }: {
   events: EventRecord[]
   onSelect: (e: EventRecord) => void
-  barcodeMap: Map<string, { id: string; code: string; scheme?: string }>
+  identifierMap: Map<string, { id: string; value: string; type?: string; symbology?: string }>
   itemMap: Map<string, { id: string; name?: string; description?: string; status?: string }>
 }) {
   return (
@@ -30,7 +31,7 @@ function EventListComponent({
           const isScannerRead = e.type === "scanner.read"
           const readable = isScannerRead ? payload?.raw : null
           const resolved = (e as any)?.content?.analysis?.resolved
-          const bc = resolved?.barcodeId ? barcodeMap.get(resolved.barcodeId) : undefined
+          const idf = resolved?.identifierId ? identifierMap.get(resolved.identifierId) : undefined
           const it = resolved?.itemId ? itemMap.get(resolved.itemId) : undefined
           const showTime = status !== "pending"
           return (
@@ -69,46 +70,24 @@ function EventListComponent({
                       )}
                     </div>
                   </div>
-                  {bc && (
+                  {idf && (
                     <div className="text-xs flex items-center gap-2">
                       <span className="opacity-60 flex items-center gap-1">
                         {/* barcode icon */}
                         <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                           <path d="M3 4v16M6 7v10M9 4v16M12 7v10M15 4v16M18 7v10M21 4v16" />
                         </svg>
-                        Barcode
+                        Identifier
                       </span>
-                      <span className="font-mono">{bc.code}</span>
-                      {bc.scheme && <span className="opacity-60">({bc.scheme})</span>}
+                      <span className="font-mono">{idf.value}</span>
+                      {(idf.type || idf.symbology) && <span className="opacity-60">({idf.type}{idf.symbology ? ` / ${idf.symbology}` : ""})</span>}
                     </div>
                   )}
                 </div>
 
                 {/* Right: item + acción */}
                 <div className="col-span-12 md:col-span-6 mt-1 flex items-start justify-between gap-2">
-                  <div className="min-w-0 text-xs space-y-1">
-                    {it ? (
-                      <>
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="opacity-60 flex items-center gap-1">
-                            {/* item icon */}
-                            <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                              <rect x="3" y="7" width="18" height="13" rx="2" />
-                              <path d="M16 3H8a2 2 0 0 0-2 2v2h12V5a2 2 0 0 0-2-2z" />
-                            </svg>
-                            Item
-                          </span>
-                          <span className="truncate">{it.name || "(Sin título)"}</span>
-                          {it.status && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] uppercase tracking-wide opacity-70">{it.status}</span>
-                          )}
-                        </div>
-                        {it.description && <div className="opacity-60 line-clamp-2">{it.description}</div>}
-                      </>
-                    ) : (
-                      <span className="opacity-60">Sin item asociado</span>
-                    )}
-                  </div>
+                {it ? <ItemBrief item={it} /> : <span className="opacity-60">Sin item asociado</span>}
                   {isScannerRead && (
                     <button
                       type="button"

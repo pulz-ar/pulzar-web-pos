@@ -9,7 +9,7 @@ import EventList from "./components/event-list"
 const db = init({ appId: process.env.NEXT_PUBLIC_INSTANT_APP_ID! })
 
 export default function InventoryCapturePage() {
-  const [barcode, setBarcode] = useState<string>("77988690")
+  const [barcode, setBarcode] = useState<string>("")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
@@ -44,15 +44,15 @@ export default function InventoryCapturePage() {
   }, [baseData])
   const firstEventId = events[0]?.id
 
-  const { barcodeIds, itemIds } = useMemo(() => {
+  const { identifierIds, itemIds } = useMemo(() => {
     const b: string[] = []
     const it: string[] = []
     for (const e of events) {
       const resolved = (e as any)?.content?.analysis?.resolved
-      if (resolved?.barcodeId) b.push(resolved.barcodeId)
+      if (resolved?.identifierId) b.push(resolved.identifierId)
       if (resolved?.itemId) it.push(resolved.itemId)
     }
-    return { barcodeIds: Array.from(new Set(b)), itemIds: Array.from(new Set(it)) }
+    return { identifierIds: Array.from(new Set(b)), itemIds: Array.from(new Set(it)) }
   }, [events])
 
   // Combinar pendientes locales como eventos "virtuales" al inicio de la lista
@@ -74,33 +74,33 @@ export default function InventoryCapturePage() {
   // Query compuesta: eventos + (barcodes/items) según ids detectados
   const composedQuery: any = useMemo(() => {
     const q: any = baseQuery
-    if (barcodeIds.length) {
-      q.barcodes = { $: { where: { id: { $in: barcodeIds } }, fields: ["code", "scheme"] } }
+    if (identifierIds.length) {
+      q.identifiers = { $: { where: { id: { $in: identifierIds } }, fields: ["value", "type", "symbology"] } }
     }
     if (itemIds.length) {
       q.items = { $: { where: { id: { $in: itemIds } }, fields: ["name", "description", "status"] } }
     }
     return q
-  }, [barcodeIds, itemIds])
+  }, [identifierIds, itemIds])
 
   const { isLoading: isLoadingComposed, data: composedData } = db.useQuery(composedQuery)
-  const [barcodeMap, setBarcodeMap] = useState(
-    () => new Map<string, { id: string; code: string; scheme?: string }>()
+  const [identifierMap, setIdentifierMap] = useState(
+    () => new Map<string, { id: string; value: string; type?: string; symbology?: string }>()
   )
   const [itemMap, setItemMap] = useState(
     () => new Map<string, { id: string; name?: string; description?: string; status?: string }>()
   )
   useEffect(() => {
-    const listB = (composedData as any)?.barcodes
-    if (Array.isArray(listB)) {
-      const m = new Map<string, { id: string; code: string; scheme?: string }>()
-      for (const bc of listB) m.set(bc.id, bc)
-      setBarcodeMap(m)
+    const listIdentifiers = (composedData as any)?.identifiers
+    if (Array.isArray(listIdentifiers)) {
+      const m = new Map<string, { id: string; value: string; type?: string; symbology?: string }>()
+      for (const idf of listIdentifiers) m.set(idf.id, idf)
+      setIdentifierMap(m)
     }
-    const listI = (composedData as any)?.items
-    if (Array.isArray(listI)) {
+    const listItems = (composedData as any)?.items
+    if (Array.isArray(listItems)) {
       const m = new Map<string, { id: string; name?: string; description?: string; status?: string }>()
-      for (const it of listI) m.set(it.id, it)
+      for (const it of listItems) m.set(it.id, it)
       setItemMap(m)
     }
   }, [composedData])
@@ -261,7 +261,7 @@ export default function InventoryCapturePage() {
               <EventList
                 events={displayEvents as any}
                 onSelect={(e) => setSelectedEventId(e.id)}
-                barcodeMap={barcodeMap}
+                identifierMap={identifierMap}
                 itemMap={itemMap}
               />
             )}

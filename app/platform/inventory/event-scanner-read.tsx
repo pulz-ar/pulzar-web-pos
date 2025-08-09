@@ -2,7 +2,8 @@
 
 import { init } from "@instantdb/react"
 import { useEffect, useMemo, useRef, useState, useTransition } from "react"
-import { createItemForBarcode, unlinkItemFromBarcode, updateItemFields, uploadItemImages } from "./actions"
+import { createItemForIdentifier, unlinkItemFromIdentifier, updateItemFields, uploadItemAttachments } from "./actions"
+import ItemImagesManager from "@/app/platform/inventory/components/item-images"
 
 const db = init({ appId: process.env.NEXT_PUBLIC_INSTANT_APP_ID! })
 
@@ -39,7 +40,7 @@ export default function EventScannerRead({ eventId }: EventScannerReadProps) {
   if (!ev) return <div className="text-sm opacity-70">Evento no encontrado</div>
 
   const raw: unknown = ev?.content?.payload?.raw
-  const resolved: { barcodeId?: string; itemId?: string } | undefined = ev?.content?.analysis?.resolved
+  const resolved: { identifierId?: string; itemId?: string } | undefined = ev?.content?.analysis?.resolved
   const itemId = resolved?.itemId
 
   const itemQuery = itemId
@@ -50,13 +51,18 @@ export default function EventScannerRead({ eventId }: EventScannerReadProps) {
             limit: 1,
           },
           $files: {},
+          attachments: { $: { fields: ["id", "isPrimary"] }, $files: {} },
         },
       }
     : null
 
   const { isLoading: isLoadingItem, data: itemData } = db.useQuery(itemQuery)
   const item = itemData?.items?.[0]
-  const files = item?.$files ?? []
+  const attachments = item?.attachments ?? []
+  const attachmentFiles = Array.isArray(attachments)
+    ? attachments.flatMap((a: any) => Array.isArray(a?.$files) ? a.$files : [])
+    : []
+  const files = attachmentFiles.length > 0 ? attachmentFiles : (item?.$files ?? [])
 
   const interpretation = useMemo(() => {
     const str = typeof raw === "string" ? raw.trim() : ""
@@ -92,11 +98,11 @@ export default function EventScannerRead({ eventId }: EventScannerReadProps) {
             </div>
       </section>
 
-      {/* Barcode: código y esquema */}
-      {resolved?.barcodeId && (
+      {/* Identifier: valor y tipo */}
+      {resolved?.identifierId && (
         <section className="space-y-2">
-          <div className="text-sm opacity-70">Barcode</div>
-          <StandardBarcodeInfo barcodeId={resolved.barcodeId} />
+          <div className="text-sm opacity-70">Identifier</div>
+          <StandardIdentifierInfo identifierId={resolved.identifierId} />
         </section>
       )}
 
@@ -111,25 +117,25 @@ export default function EventScannerRead({ eventId }: EventScannerReadProps) {
                       {item.status}
                     </span>
                   )}
-                  {resolved?.barcodeId && <ConfirmUnlinkButton barcodeId={resolved.barcodeId} />}
+                  {resolved?.identifierId && <ConfirmUnlinkButton identifierId={resolved.identifierId} />}
                 </div>
               </div>
           {isLoadingItem ? (
             <div className="text-xs opacity-70">Cargando item...</div>
           ) : item ? (
-            <ItemEditor key={(item as any)?.updatedAt ?? item.id} item={item} files={files} barcodeId={resolved.barcodeId} />
+            <ItemEditor key={(item as any)?.updatedAt ?? item.id} item={item} files={files} attachments={attachments} />
           ) : (
             <div className="text-xs opacity-70">Item no encontrado</div>
           )}
         </section>
       ) : (
-        // Si hay barcode pero no item vinculado aún, permitir crear
-        resolved?.barcodeId ? (
+        // Si hay identifier pero no item vinculado aún, permitir crear
+        resolved?.identifierId ? (
           <section className="space-y-2">
             <div className="flex items-center justify-between">
               <div className="text-sm opacity-70">Item</div>
             </div>
-            <CreateItemForBarcodeButton barcodeId={resolved.barcodeId} />
+            <CreateItemForIdentifierButton identifierId={resolved.identifierId} />
           </section>
         ) : null
       )}
@@ -142,27 +148,26 @@ export default function EventScannerRead({ eventId }: EventScannerReadProps) {
   )
 }
 
-function StandardBarcodeInfo({ barcodeId }: { barcodeId: string }) {
+function StandardIdentifierInfo({ identifierId }: { identifierId: string }) {
   const query = {
-    barcodes: {
-      $: { where: { id: barcodeId }, limit: 1 },
+    identifiers: {
+      $: { where: { id: identifierId }, limit: 1, fields: ["value", "type", "symbology"] },
       item: { $: { fields: ["id"] } },
     },
-  }
-  const { isLoading, data } = db.useQuery(query as any)
-  if (isLoading) return <div className="text-xs opacity-70">Cargando barcode...</div>
-  const bc = (data?.barcodes?.[0] ?? null) as { id: string; code: string; scheme?: string; item?: { id: string } } | null
-  if (!bc) return null
+  } as any
+  const { isLoading, data } = db.useQuery(query)
+  if (isLoading) return <div className="text-xs opacity-70">Cargando identifier...</div>
+  const idf = (data?.identifiers?.[0] ?? null) as { id: string; value: string; type?: string; symbology?: string; item?: { id: string } } | null
+  if (!idf) return null
   return (
     <div className="text-xs opacity-80 flex items-center gap-2">
-      <span className="font-mono">{bc.code}</span>
-      {bc.scheme && <span className="opacity-60">({bc.scheme})</span>}
-      {/* Botón X se muestra en la cabecera del Item */}
+      <span className="font-mono">{idf.value}</span>
+      {idf.type && <span className="opacity-60">({idf.type}{idf.symbology ? ` / ${idf.symbology}` : ""})</span>}
     </div>
   )
 }
 
-function CreateItemForBarcodeButton({ barcodeId }: { barcodeId: string }) {
+function CreateItemForIdentifierButton({ identifierId }: { identifierId: string }) {
   const [isPending, startTransition] = useTransition()
   return (
     <button
@@ -171,7 +176,7 @@ function CreateItemForBarcodeButton({ barcodeId }: { barcodeId: string }) {
       disabled={isPending}
       onClick={() => {
         startTransition(async () => {
-          await createItemForBarcode({ barcodeId })
+          await createItemForIdentifier({ identifierId })
         })
       }}
     >
@@ -180,7 +185,7 @@ function CreateItemForBarcodeButton({ barcodeId }: { barcodeId: string }) {
   )
 }
 
-function ItemEditor({ item, files, barcodeId }: { item: any; files: any; barcodeId?: string }) {
+function ItemEditor({ item, files, attachments }: { item: any; files: any; attachments: any }) {
   const [form, setForm] = useState({
     name: item?.name ?? "",
     description: item?.description ?? "",
@@ -201,8 +206,7 @@ function ItemEditor({ item, files, barcodeId }: { item: any; files: any; barcode
     })
   }, [item?.id, item?.updatedAt])
   const [isSaving, startTransition] = useTransition()
-  const inputRef = useRef<HTMLInputElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [pendingFiles, setPendingFiles] = useState<Array<{ filename: string; base64: string; contentType?: string; previewURL: string; status: 'pending'|'uploading'|'done' }>>([])
 
   const onChange = (key: keyof typeof form) => (e: any) => {
     const value = key === "price" || key === "stock" ? Number(e.target.value) : e.target.value
@@ -212,27 +216,14 @@ function ItemEditor({ item, files, barcodeId }: { item: any; files: any; barcode
   const onSave = () => {
     startTransition(async () => {
       await updateItemFields({ itemId: item.id, updates: form })
+      if (pendingFiles.length > 0) {
+        await uploadItemAttachments({ itemId: item.id, files: pendingFiles, kind: "image" })
+        setPendingFiles([])
+      }
     })
   }
 
-  // Carga de imágenes (web + mobile capture)
-  const onSelectFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const filesSel = Array.from(e.target.files || [])
-    if (filesSel.length === 0) return
-    // Subimos vía action backend: convertimos File -> ArrayBuffer -> Buffer
-    const entries = await Promise.all(
-      filesSel.map(async (f) => {
-        const ab = await f.arrayBuffer()
-        // Convertir a base64 para pasar por Server Actions
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(ab)))
-        const safeName = `${item.id}/${Date.now()}-${encodeURIComponent(f.name)}`
-        return { path: safeName, base64, contentType: f.type }
-      })
-    )
-    await uploadItemImages({ itemId: item.id, files: entries })
-    // limpiar input para poder volver a subir mismo nombre
-    if (fileInputRef.current) fileInputRef.current.value = ""
-  }
+  // ItemEditor delega la selección al gestor de imágenes (pending en el componente)
 
   return (
     <div className="space-y-3">
@@ -264,68 +255,40 @@ function ItemEditor({ item, files, barcodeId }: { item: any; files: any; barcode
                   rows={3}
                   value={form.description} onChange={onChange("description")} placeholder="Descripción" />
       </div>
+      {/* Gestor elegante de imágenes */}
+      <div className="space-y-2">
+        <div className="text-sm opacity-70">Imágenes</div>
+        <div className="relative w-full">
+            <ItemImagesManager
+              files={files}
+              itemId={item.id}
+              attachments={attachments}
+              deferUpload={true}
+              pendingEntries={pendingFiles}
+              onPendingChange={(next) => {
+                // Evitar setState durante render en el mismo tick
+                queueMicrotask(() => setPendingFiles(next as any))
+              }}
+              previewHeightClass="h-48 sm:h-56 md:h-64"
+            />
+        </div>
+      </div>
+
       <div className="flex gap-2">
         <button type="button" className="px-2 py-1 border border-white/40 text-xs"
                 disabled={isSaving} onClick={onSave}>{isSaving ? "Guardando..." : "Guardar"}</button>
-      </div>
-
-      {/* Carrusel de imágenes fijo */}
-      <div className="space-y-2">
-        <div className="text-sm opacity-70">Imágenes</div>
-        <div className="relative w-full h-48 sm:h-56 md:h-64">
-          <ImageCarousel files={files} />
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            multiple
-            onChange={onSelectFiles}
-            className="text-xs"
-          />
-        </div>
       </div>
     </div>
   )
 }
 
 function ImageCarousel({ files }: { files: Array<{ id: string; path: string; url: string }> }) {
-  const [index, setIndex] = useState(0)
-  const has = files.length > 0
-  const current = has ? files[Math.max(0, Math.min(index, files.length - 1))] : null
   return (
-    <div className="h-full w-full border border-white/20 flex items-center justify-center relative overflow-hidden">
-      {current ? (
-        // Contenedor fijo, imagen contain
-        <img src={current.url} alt="item" className="object-contain w-full h-full" />
-      ) : (
-        <div className="text-xs opacity-60">Sin imágenes</div>
-      )}
-      {files.length > 1 && (
-        <>
-          <button
-            type="button"
-            className="absolute left-1 top-1/2 -translate-y-1/2 h-6 w-6 border border-white/40 text-xs"
-            onClick={() => setIndex((i) => (i - 1 + files.length) % files.length)}
-          >
-            ‹
-          </button>
-          <button
-            type="button"
-            className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 border border-white/40 text-xs"
-            onClick={() => setIndex((i) => (i + 1) % files.length)}
-          >
-            ›
-          </button>
-        </>
-      )}
-    </div>
+    <ItemImagesManager files={files} />
   )
 }
 
-function ConfirmUnlinkButton({ barcodeId }: { barcodeId: string }) {
+function ConfirmUnlinkButton({ identifierId }: { identifierId: string }) {
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   return (
@@ -359,7 +322,7 @@ function ConfirmUnlinkButton({ barcodeId }: { barcodeId: string }) {
                 disabled={isPending}
                 onClick={() => {
                   startTransition(async () => {
-                    await unlinkItemFromBarcode({ barcodeId })
+            await unlinkItemFromIdentifier({ identifierId })
                     setOpen(false)
                   })
                 }}

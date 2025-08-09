@@ -2,19 +2,19 @@
 
 import { init, lookup } from "@instantdb/admin"
 import schema from "@inventory/instant.schema"
-import { generateObject, streamText } from "ai"
+import { streamText } from "ai"
 import Exa from "exa-js"
 import { z } from "zod"
 
 export async function runBarcodeAnalysis(params: {
-  appId: string
-  adminToken: string
+  userEmail: string
   eventId: string
   raw: string
   orgId?: string
-  userEmail: string
 }) {
-  const { appId, adminToken, eventId, raw, orgId, userEmail } = params
+  const { eventId, raw, orgId, userEmail } = params
+  const appId = process.env.NEXT_PUBLIC_INSTANT_APP_ID as string
+  const adminToken = process.env.INSTANT_APP_ADMIN_TOKEN as string
   const db = init({ appId, adminToken, schema })
   const scopedDb = db.asUser({ email: userEmail })
 
@@ -91,9 +91,7 @@ export async function runBarcodeAnalysis(params: {
     try {
       const url = `https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(barcode)}.json`
       const res = await fetch(url, {
-        // Identificarnos educadamente ante el API público
         headers: { "User-Agent": "pulzar-inventory/1.0 (+https://pulzar.app)" },
-        // Evitar cache agresivo en edge
         cache: "no-store",
       })
       if (!res.ok) return null
@@ -273,17 +271,8 @@ export async function runBarcodeAnalysis(params: {
     // Fallback con AI si no encontramos en proveedores conocidos
     async function aiFallback(barcode: string): Promise<ExternalProduct> {
       try {
-        const systemInstruction = `Eres un asistente que genera un esquema JSON ESTRICTO para un producto identificado por un código de barras. 
-Devuelve SOLO JSON válido con estas claves: name, description, brand, imageUrl, quantity, categories. 
-Si una clave no aplica o no se conoce, usa null. No incluyas texto adicional.`
-        const userPrompt = `Dado el código de barras: ${barcode}\n\nObjetivo: Genera un JSON estrictamente con estas claves y valores string o null:\n{
-  "name": string | null,
-  "description": string | null,
-  "brand": string | null,
-  "imageUrl": string | null,
-  "quantity": string | null,
-  "categories": string | null
-}\n\nNo agregues comentarios ni texto fuera del JSON.`
+        const systemInstruction = `Eres un asistente que genera un esquema JSON ESTRICTO para un producto identificado por un código de barras. \nDevuelve SOLO JSON válido con estas claves: name, description, brand, imageUrl, quantity, categories. \nSi una clave no aplica o no se conoce, usa null. No incluyas texto adicional.`
+        const userPrompt = `Dado el código de barras: ${barcode}\n\nObjetivo: Genera un JSON estrictamente con estas claves y valores string o null:\n{\n  "name": string | null,\n  "description": string | null,\n  "brand": string | null,\n  "imageUrl": string | null,\n  "quantity": string | null,\n  "categories": string | null\n}\n\nNo agregues comentarios ni texto fuera del JSON.`
         const result = await streamText({
           model: 'openai/gpt-oss-120b',
           system: systemInstruction,

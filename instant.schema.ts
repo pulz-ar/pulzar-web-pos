@@ -55,6 +55,24 @@ const _schema = i.schema({
       stock: i.number(),
       updatedAt: i.date(),
     }),
+    // Nueva entidad: Products (familias comerciales)
+    products: i.entity({
+      name: i.string().indexed(),
+      brand: i.string().optional().indexed(),
+      description: i.string().optional(),
+      status: i.string(),
+      createdAt: i.date(),
+      updatedAt: i.date(),
+    }),
+    // Nueva entidad: Identifiers (códigos asociados a items)
+    identifiers: i.entity({
+      type: i.string().indexed(),
+      value: i.string().indexed(),
+      scope: i.string().optional().indexed(),
+      symbology: i.string().optional(),
+      isPrimary: i.boolean().optional(),
+      createdAt: i.date(),
+    }),
     objectives: i.entity({
       createdAt: i.date(),
       description: i.string().optional(),
@@ -80,6 +98,12 @@ const _schema = i.schema({
       status: i.string(),
       title: i.string(),
       updatedAt: i.date(),
+    }),
+    attachments: i.entity({
+      createdAt: i.date(),
+      kind: i.string().optional(),
+      title: i.string().optional(),
+      isPrimary: i.boolean().optional(),
     }),
   },
   links: {
@@ -111,9 +135,19 @@ const _schema = i.schema({
       forward: { on: "barcodes", has: "one", label: "organization" },
       reverse: { on: "organizations", has: "many", label: "barcodes" },
     },
+    // Organización <> Products
+    productsOrganization: {
+      forward: { on: "products", has: "one", label: "organization" },
+      reverse: { on: "organizations", has: "many", label: "products" },
+    },
     itemsOrganization: {
       forward: { on: "items", has: "one", label: "organization" },
       reverse: { on: "organizations", has: "many", label: "items" },
+    },
+    // Organización <> Identifiers
+    identifiersOrganization: {
+      forward: { on: "identifiers", has: "one", label: "organization" },
+      reverse: { on: "organizations", has: "many", label: "identifiers" },
     },
     credentialsOrganization: {
       forward: { on: "credentials", has: "one", label: "organization" },
@@ -146,6 +180,26 @@ const _schema = i.schema({
         has: "one",
         label: "item",
       },
+    },
+    // Products <> Items
+    productItems: {
+      forward: { on: "products", has: "many", label: "items" },
+      reverse: { on: "items", has: "one", label: "product" },
+    },
+    // Identifiers <> Item (nuevo modelo de identificadores)
+    identifierItem: {
+      forward: { on: "identifiers", has: "one", label: "item" },
+      reverse: { on: "items", has: "many", label: "identifiers" },
+    },
+    // Item <> Attachments (genérico)
+    itemsAttachments: {
+      forward: { on: "items", has: "many", label: "attachments" },
+      reverse: { on: "attachments", has: "one", label: "item" },
+    },
+    // Attachment <> $files (un adjunto puede tener múltiples archivos)
+    attachmentFiles: {
+      forward: { on: "attachments", has: "many", label: "$files" },
+      reverse: { on: "$files", has: "one", label: "attachment" },
     },
     // Relación de imágenes por item: un item puede tener muchas imágenes ($files)
     itemImages: {
