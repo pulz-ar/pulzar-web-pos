@@ -41,19 +41,6 @@ export default function RootLayout({
           <SignedIn>
             <InstantDbAuth />
           </SignedIn>
-          <header className="w-full flex items-center justify-between px-6 py-4">
-            <div>Pulzar</div>
-            <nav className="flex items-center gap-3">
-              <SignedOut>
-                <SignInButton mode="modal" />
-                <SignUpButton mode="modal" />
-              </SignedOut>
-              <SignedIn>
-                <Link href="/platform">Acceder a la plataforma</Link>
-                <UserButton />
-              </SignedIn>
-            </nav>
-          </header>
           {children}
         </body>
       </html>

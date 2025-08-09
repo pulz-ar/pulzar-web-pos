@@ -254,7 +254,7 @@ export default function InventoryCapturePage() {
               )}
             </div>
           </div>
-          <div className="flex-1 md:min-h-0 md:overflow-hidden">
+          <div className="flex-1 md:minh-0 md:overflow-hidden">
             {events.length === 0 ? (
               <div className="text-sm opacity-70">Sin registros</div>
             ) : (

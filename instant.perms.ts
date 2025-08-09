@@ -33,6 +33,25 @@ const rules = {
     }
   },
 
+  // Orders -> pertenecen a una organización (link: organization)
+  "orders": {
+    "allow": {
+      "view": "auth.id in data.ref('organization.members.id')",
+      "create": "auth.id != null",
+      "update": "auth.id in data.ref('organization.members.id')"
+    }
+  },
+
+  // OrderLines -> pertenecen a una organización vía order -> organization
+  "orderLines": {
+    "allow": {
+      "view": "auth.id in data.ref('order.organization.members.id')",
+      "create": "auth.id != null",
+      "update": "auth.id in data.ref('order.organization.members.id')",
+      "delete": "auth.id in data.ref('order.organization.members.id')"
+    }
+  },
+
   // Products -> pertenecen a una organización (link: organization)
   "products": {
     "allow": {

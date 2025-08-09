@@ -3,6 +3,12 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --panel: #ffffff;
+  --panel-contrast: #171717;
+  --border: rgba(0, 0, 0, 0.2);
+  --border-weak: rgba(0, 0, 0, 0.1);
+  --overlay: rgba(0, 0, 0, 0.3);
+  --overlay-strong: rgba(0, 0, 0, 0.5);
 }
 
 @theme inline {
@@ -12,11 +18,42 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Preferencias del sistema: pueden actuar como valor por defecto,
+   pero serán sobreescritas por clases .dark / .light en html */
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --panel: #111111;
+    --panel-contrast: #ededed;
+    --border: rgba(255, 255, 255, 0.2);
+    --border-weak: rgba(255, 255, 255, 0.1);
+    --overlay: rgba(0, 0, 0, 0.3);
+    --overlay-strong: rgba(0, 0, 0, 0.5);
   }
+}
+
+/* Forzar tema con clase en html (tiene prioridad por especificidad y orden) */
+:root.dark, .dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --panel: #111111;
+  --panel-contrast: #ededed;
+  --border: rgba(255, 255, 255, 0.2);
+  --border-weak: rgba(255, 255, 255, 0.1);
+  --overlay: rgba(0, 0, 0, 0.3);
+  --overlay-strong: rgba(0, 0, 0, 0.5);
+}
+
+:root.light, .light {
+  --background: #ffffff;
+  --foreground: #171717;
+  --panel: #ffffff;
+  --panel-contrast: #171717;
+  --border: rgba(0, 0, 0, 0.2);
+  --border-weak: rgba(0, 0, 0, 0.1);
+  --overlay: rgba(0, 0, 0, 0.3);
+  --overlay-strong: rgba(0, 0, 0, 0.5);
 }
 
 body {

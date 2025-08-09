@@ -26,7 +26,7 @@ const _schema = i.schema({
     organizationMemberships: i.entity({
       clerkOrgId: i.string().unique().indexed(),
       content: i.any().optional(),
-      createdAt: i.date().optional(),
+      createdAt: i.date().indexed(),
       updatedAt: i.date().optional(),
     }),
     barcodes: i.entity({
@@ -84,6 +84,13 @@ const _schema = i.schema({
       status: i.string(),
       total: i.number(),
       updatedAt: i.date(),
+    }),
+    orderLines: i.entity({
+      createdAt: i.date(),
+      updatedAt: i.date(),
+      quantity: i.number(),
+      price: i.number(),
+      total: i.number(),
     }),
     projects: i.entity({
       createdAt: i.date(),
@@ -156,6 +163,16 @@ const _schema = i.schema({
     ordersOrganization: {
       forward: { on: "orders", has: "one", label: "organization" },
       reverse: { on: "organizations", has: "many", label: "orders" },
+    },
+    // Orders <> OrderLines
+    ordersOrderLines: {
+      forward: { on: "orders", has: "many", label: "orderLines" },
+      reverse: { on: "orderLines", has: "one", label: "order" },
+    },
+    // OrderLine <> Item
+    orderLineItem: {
+      forward: { on: "orderLines", has: "one", label: "item" },
+      reverse: { on: "items", has: "many", label: "orderLines" },
     },
     objectivesOrganization: {
       forward: { on: "objectives", has: "one", label: "organization" },

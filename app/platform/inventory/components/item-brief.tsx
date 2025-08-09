@@ -17,7 +17,12 @@ export default function ItemBrief({ item }: { item: Item }) {
         </span>
         <span className="truncate">{item.name || "(Sin título)"}</span>
         {item.status && (
-          <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] uppercase tracking-wide opacity-70">{item.status}</span>
+          <span
+            className="inline-flex items-center px-1.5 py-0.5 text-[10px] uppercase tracking-wide"
+            style={{ border: '1px solid var(--border-weak)' }}
+          >
+            {item.status}
+          </span>
         )}
       </div>
       {item.description && <div className="opacity-60 line-clamp-2">{item.description}</div>}

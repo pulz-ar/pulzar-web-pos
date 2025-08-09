@@ -79,14 +79,14 @@ export default function EventScannerRead({ eventId }: EventScannerReadProps) {
   return (
     <div className="relative">
       {/* Static border */}
-      <div className="border border-white/30 rounded-sm p-4">
+      <div className="rounded-sm p-4 border" style={{ borderColor: 'var(--border)' }}>
         <div className="space-y-6">
       {/* Event / Scanner Read: datos básicos */}
           <section className="space-y-1">
             <div className="flex items-center justify-between">
               <div className="text-sm opacity-70">Evento</div>
               {status && (
-                <span className="inline-flex items-center gap-1 border border-white/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide rounded-none">
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] uppercase tracking-wide rounded-none" style={{ border: '1px solid var(--border-weak)' }}>
                   {status}
                 </span>
               )}
@@ -113,7 +113,7 @@ export default function EventScannerRead({ eventId }: EventScannerReadProps) {
                 <div className="text-sm opacity-70">Item</div>
                 <div className="flex items-center gap-2">
                   {!isLoadingItem && item?.status && (
-                    <span className="inline-flex items-center gap-1 border border-white/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide rounded-none">
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] uppercase tracking-wide rounded-none" style={{ border: '1px solid var(--border-weak)' }}>
                       {item.status}
                     </span>
                   )}

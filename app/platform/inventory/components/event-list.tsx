@@ -35,7 +35,11 @@ function EventListComponent({
           const it = resolved?.itemId ? itemMap.get(resolved.itemId) : undefined
           const showTime = status !== "pending"
           return (
-            <li key={e.id} className="text-sm py-2 border border-white/10 rounded-sm px-3">
+            <li
+              key={e.id}
+              className="text-sm py-2 rounded-sm px-3 border"
+              style={{ borderColor: 'var(--border-weak)' }}
+            >
               <div className="md:grid md:grid-cols-12 md:gap-4">
                 {/* Header */}
                 <div className="col-span-12 flex items-center justify-between">
