@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { init } from "@instantdb/react"
 import { submitBarcode } from "./actions"
-import EventScannerRead from "./event-scanner-read"
+import EventDetails from "./components/event-details"
+import EventList from "./components/event-list"
 
 const db = init({ appId: process.env.NEXT_PUBLIC_INSTANT_APP_ID! })
 
@@ -27,14 +28,20 @@ export default function InventoryCapturePage() {
       },
     },
   }
-  const { data: baseData } = db.useQuery(baseQuery)
-  const events = (baseData?.events ?? []) as Array<{
+  const { data: baseData, isLoading: isLoadingBase } = db.useQuery(baseQuery)
+  const [cachedEvents, setCachedEvents] = useState<any[]>([])
+  const events = ((baseData?.events ?? null) || cachedEvents) as Array<{
     id: string
     type: string
     content: any
     createdAt?: string
     serverCreatedAt?: string | number
   }>
+  useEffect(() => {
+    if (Array.isArray((baseData as any)?.events)) {
+      setCachedEvents((baseData as any).events)
+    }
+  }, [baseData])
   const firstEventId = events[0]?.id
 
   const { barcodeIds, itemIds } = useMemo(() => {
@@ -50,12 +57,17 @@ export default function InventoryCapturePage() {
 
   // Combinar pendientes locales como eventos "virtuales" al inicio de la lista
   const displayEvents = useMemo(() => {
-    const pendingAsEvents = pendingQueue.map((p) => ({
-      id: `pending-${p.id}`,
-      type: "scanner.read",
-      content: { status: "pending", payload: { raw: p.value } },
-      serverCreatedAt: Date.now(),
-    }))
+    const realIds = new Set(events.map((e) => e.id))
+    const realByRaw = new Set(
+      events.map((e) => (typeof e.content === 'object' ? e.content?.payload?.raw : null)).filter(Boolean)
+    )
+    const pendingAsEvents = pendingQueue
+      .filter((p) => !realIds.has(p.id) && !realByRaw.has(p.value))
+      .map((p) => ({
+        id: p.id,
+        type: "scanner.read",
+        content: { status: "pending", payload: { raw: p.value } },
+      }))
     return [...pendingAsEvents, ...events]
   }, [pendingQueue, events])
 
@@ -72,18 +84,25 @@ export default function InventoryCapturePage() {
   }, [barcodeIds, itemIds])
 
   const { isLoading: isLoadingComposed, data: composedData } = db.useQuery(composedQuery)
-
-  const barcodeMap = useMemo(() => {
-    const m = new Map<string, { id: string; code: string; scheme?: string }>()
-    const list = (composedData as any)?.barcodes ?? []
-    for (const bc of list) m.set(bc.id, bc)
-    return m
-  }, [composedData])
-  const itemMap = useMemo(() => {
-    const m = new Map<string, { id: string; name?: string; description?: string; status?: string }>()
-    const list = (composedData as any)?.items ?? []
-    for (const it of list) m.set(it.id, it)
-    return m
+  const [barcodeMap, setBarcodeMap] = useState(
+    () => new Map<string, { id: string; code: string; scheme?: string }>()
+  )
+  const [itemMap, setItemMap] = useState(
+    () => new Map<string, { id: string; name?: string; description?: string; status?: string }>()
+  )
+  useEffect(() => {
+    const listB = (composedData as any)?.barcodes
+    if (Array.isArray(listB)) {
+      const m = new Map<string, { id: string; code: string; scheme?: string }>()
+      for (const bc of listB) m.set(bc.id, bc)
+      setBarcodeMap(m)
+    }
+    const listI = (composedData as any)?.items
+    if (Array.isArray(listI)) {
+      const m = new Map<string, { id: string; name?: string; description?: string; status?: string }>()
+      for (const it of listI) m.set(it.id, it)
+      setItemMap(m)
+    }
   }, [composedData])
 
   async function handleSubmit(event: React.FormEvent) {
@@ -94,13 +113,15 @@ export default function InventoryCapturePage() {
     setBarcode("")
     // Mantener foco en el input para seguir escaneando
     scannerInputRef.current?.focus()
-    // Agregar a cola local de pendientes inmediatamente
-    const localId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    setPendingQueue((q) => [...q, { id: localId, value: valueToSubmit }])
+    // Generar eventId en cliente (UUID si está, si no fallback) y agregar a cola local
+    const clientEventId = (globalThis as any).crypto?.randomUUID
+      ? (globalThis as any).crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    setPendingQueue((q) => [{ id: clientEventId, value: valueToSubmit }, ...q])
     startTransition(async () => {
-      const result = await submitBarcode(valueToSubmit)
-      // Remover de cola local sin importar el resultado
-      setPendingQueue((q) => q.filter((p) => p.id !== localId))
+      const result = await submitBarcode(valueToSubmit, clientEventId)
+      // Remover de cola local: por id real devuelto o por clientEventId
+      setPendingQueue((q) => q.filter((p) => p.id !== (result.ok ? result.eventId : clientEventId)))
       if (!result.ok) {
         setErrorMessage(result.error)
       } else {
@@ -218,17 +239,23 @@ export default function InventoryCapturePage() {
           </div>
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">Eventos</h2>
-            {pendingQueue.length > 0 && (
-              <div className="text-xs opacity-80 flex items-center gap-2">
-                <span className="inline-block h-3 w-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span>Pendientes: {pendingQueue.length}</span>
-              </div>
-            )}
+            <div className="text-xs opacity-80 flex items-center gap-3">
+              {(isLoadingBase || isLoadingComposed) && (
+                <div className="flex items-center gap-1">
+                  <span className="inline-block h-3 w-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Actualizando…</span>
+                </div>
+              )}
+              {pendingQueue.length > 0 && (
+                <div className="flex items-center gap-1">
+                  <span className="inline-block h-3 w-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Pendientes: {pendingQueue.length}</span>
+                </div>
+              )}
+            </div>
           </div>
           <div className="flex-1 md:min-h-0 md:overflow-hidden">
-            {isLoadingComposed ? (
-              <div className="text-sm opacity-70">Cargando eventos...</div>
-            ) : events.length === 0 ? (
+            {events.length === 0 ? (
               <div className="text-sm opacity-70">Sin registros</div>
             ) : (
               <EventList
@@ -248,157 +275,3 @@ export default function InventoryCapturePage() {
     </main>
   )
 }
-
-type EventRecord = {
-  id: string
-  type: string
-  content: any
-  createdAt?: string
-  serverCreatedAt?: string | number
-}
-
-function EventList({
-  events,
-  onSelect,
-  barcodeMap,
-  itemMap,
-}: {
-  events: EventRecord[]
-  onSelect: (e: EventRecord) => void
-  barcodeMap: Map<string, { id: string; code: string; scheme?: string }>
-  itemMap: Map<string, { id: string; name?: string; description?: string; status?: string }>
-}) {
-  return (
-    <div className="md:h-full md:overflow-y-auto">
-      <ul className="space-y-3">
-        {events.map((e) => {
-        const status = typeof e.content === "object" && e.content?.status ? String(e.content.status) : null
-        const payload = typeof e.content === "object" && e.content?.payload ? e.content.payload : null
-        const isScannerRead = e.type === "scanner.read"
-        const readable = isScannerRead ? payload?.raw : null
-          const resolved = (e as any)?.content?.analysis?.resolved
-          const bc = resolved?.barcodeId ? barcodeMap.get(resolved.barcodeId) : undefined
-          const it = resolved?.itemId ? itemMap.get(resolved.itemId) : undefined
-        return (
-          <li key={e.id} className="text-sm py-2 border border-white/10 rounded-sm px-3">
-            <div className="md:grid md:grid-cols-12 md:gap-4">
-              {/* Header */}
-              <div className="col-span-12 flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-medium truncate">{e.type}</span>
-                  {status && (
-                    <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] uppercase tracking-wide opacity-70">
-                      {status}
-                    </span>
-                  )}
-                </div>
-                <span className="opacity-60 text-xs whitespace-nowrap">
-                  {e.createdAt
-                    ? new Date(e.createdAt).toLocaleString()
-                    : e.serverCreatedAt
-                    ? new Date(Number(e.serverCreatedAt)).toLocaleString()
-                    : ""}
-                </span>
-              </div>
-
-              {/* Left: lectura + barcode */}
-              <div className="col-span-12 md:col-span-6 mt-1 space-y-1">
-                <div className="opacity-80 break-words text-xs flex items-center justify-between gap-2">
-                  <div className="truncate">
-                    {isScannerRead && readable ? (
-                      <span className="font-mono">{String(readable)}</span>
-                    ) : (
-                      <span className="opacity-60">{/* otros tipos no se muestran detalles */}</span>
-                    )}
-                  </div>
-                </div>
-                {bc && (
-                  <div className="text-xs flex items-center gap-2">
-                    <span className="opacity-60 flex items-center gap-1">
-                      {/* barcode icon */}
-                      <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                        <path d="M3 4v16M6 7v10M9 4v16M12 7v10M15 4v16M18 7v10M21 4v16" />
-                      </svg>
-                      Barcode
-                    </span>
-                    <span className="font-mono">{bc.code}</span>
-                    {bc.scheme && <span className="opacity-60">({bc.scheme})</span>}
-                  </div>
-                )}
-              </div>
-
-              {/* Right: item + acción */}
-              <div className="col-span-12 md:col-span-6 mt-1 flex items-start justify-between gap-2">
-                <div className="min-w-0 text-xs space-y-1">
-                  {it ? (
-                    <>
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="opacity-60 flex items-center gap-1">
-                          {/* item icon */}
-                          <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                            <rect x="3" y="7" width="18" height="13" rx="2" />
-                            <path d="M16 3H8a2 2 0 0 0-2 2v2h12V5a2 2 0 0 0-2-2z" />
-                          </svg>
-                          Item
-                        </span>
-                        <span className="truncate">{it.name || "(Sin título)"}</span>
-                        {it.status && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] uppercase tracking-wide opacity-70">{it.status}</span>
-                        )}
-                      </div>
-                      {it.description && (
-                        <div className="opacity-60 line-clamp-2">{it.description}</div>
-                      )}
-                    </>
-                  ) : (
-                    <span className="opacity-60">Sin item asociado</span>
-                  )}
-                </div>
-                {isScannerRead && (
-                  <button
-                    type="button"
-                    className="text-xs inline-flex items-center gap-1 rounded-none px-1.5 py-0.5 opacity-70 hover:opacity-100 whitespace-nowrap"
-                    onClick={() => onSelect(e)}
-                  >
-                    Detalle <span aria-hidden>{"\u203A"}</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          </li>
-        )
-      })}
-      </ul>
-    </div>
-  )
-}
-
-function EventDetails({ eventId }: { eventId: string | null }) {
-  const detailQuery = eventId
-    ? {
-        events: {
-          $: {
-            where: { id: eventId },
-            limit: 1,
-          },
-        },
-      }
-    : null
-  const { isLoading, data } = db.useQuery(detailQuery as any)
-  if (!eventId) {
-    return <div className="text-sm opacity-70">Selecciona un evento para ver detalles</div>
-  }
-  if (isLoading) {
-    return <div className="text-sm opacity-70">Cargando detalle...</div>
-  }
-  const ev = (data?.events?.[0] ?? null) as EventRecord | null
-  if (!ev) {
-    return <div className="text-sm opacity-70">Evento no encontrado</div>
-  }
-  if (ev.type === "scanner.read") {
-    return <EventScannerRead eventId={ev.id} />
-  }
-  return <div className="text-sm opacity-70">Sin detalles para este tipo de evento</div>
-}
-
-

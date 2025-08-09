@@ -9,14 +9,13 @@ import { after } from "next/server"
 
 type SubmitResult = { ok: true; eventId: string } | { ok: false; error: string }
 
-export async function submitBarcode(barcode: string): Promise<SubmitResult> {
+export async function submitBarcode(barcode: string, eventId: string): Promise<SubmitResult> {
   try {
     if (!barcode || barcode.trim().length === 0) {
       return { ok: false, error: "Código de barras inválido" }
     }
 
     const { userId, orgId, sessionClaims } = await auth()
-    const eventId = id()
     function normalizeScannedInput(input: string): string {
       return input
         .trim()
